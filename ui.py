@@ -1,4 +1,6 @@
 import tkinter as tk
+from tkinter.scrolledtext import ScrolledText
+from datetime import datetime
 import json
 import os
 
@@ -9,32 +11,47 @@ class ClipUI:
 
         self.root = tk.Tk()
         self.root.title("ClipShelf - 剪贴板历史")
-        self.root.geometry("500x400")
+        self.root.geometry("600x500")
 
-        self.listbox = tk.Listbox(self.root, width=60, height=20)
-        self.listbox.pack(pady=10)
-        self.listbox.bind('<Double-1>', self.on_select)
+        self.display = ScrolledText(self.root, wrap=tk.WORD, font=("Consolas", 11))
+        self.display.pack(fill=tk.BOTH, expand=True)
+        self.display.bind('<Double-1>', self.on_select)
 
-        self.refresh_list()
+        self.refresh_display()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def add_clip(self, text):
-        if text not in self.clip_list:
-            self.clip_list.insert(0, text)
-            self.refresh_list()
+        if not text.strip():
+            return
+        if not any(clip['text'] == text for clip in self.clip_list):
+            self.clip_list.insert(0, {"time": self.timestamp(), "text": text})
+            self.refresh_display()
             self.save_history()
 
-    def refresh_list(self):
-        self.listbox.delete(0, tk.END)
-        for item in self.clip_list:
-            self.listbox.insert(tk.END, item[:60])
+    def refresh_display(self):
+        self.display.delete(1.0, tk.END)
+        for clip in self.clip_list:
+            self.display.insert(tk.END, "-" * 40 + "\n")
+            self.display.insert(tk.END, f"[{clip['time']}]\n")
+            self.display.insert(tk.END, clip['text'] + "\n\n")
+        self.display.see(tk.END)
 
     def on_select(self, event):
-        index = self.listbox.curselection()
-        if index:
-            selected = self.clip_list[index[0]]
-            self.root.clipboard_clear()
-            self.root.clipboard_append(selected)
+        index = self.display.index(tk.CURRENT)
+        line = self.display.get(f"{index} linestart", f"{index} lineend").strip()
+        # 从当前位置向上查找最近的内容段落
+        lines = self.display.get("1.0", tk.END).split("\n")
+        current_line_num = int(index.split('.')[0])
+        selected_text = ""
+        for i in range(current_line_num - 1, -1, -1):
+            if lines[i].startswith("----------------------------------------"):
+                break
+            selected_text = lines[i] + "\n" + selected_text
+        self.root.clipboard_clear()
+        self.root.clipboard_append(selected_text.strip())
+
+    def timestamp(self):
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def load_history(self):
         if os.path.exists(self.storage_path):
